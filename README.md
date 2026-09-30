@@ -2,10 +2,6 @@
 
 Página simples, feita só com HTML, CSS e JavaScript, que mostra a hora, o tempo e os feriados do lugar onde a pessoa está.
 
-**Ver online:** https://SEU-USUARIO.github.io/hora-e-tempo/
-
-![Captura de tela da página](captura.png)
-
 ## O que a página faz
 
 - **Hora local:** relógio atualizado a cada segundo, com o fuso do dispositivo.
