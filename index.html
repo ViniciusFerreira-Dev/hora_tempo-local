@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hora e tempo local</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;500&display=swap" rel="stylesheet">
+<style>
+  /* O céu muda conforme a hora local de quem abre a página */
+  html[data-period="madrugada"]  { --sky: linear-gradient(180deg, #0a0f2c, #1b2a5a); }
+  html[data-period="amanhecer"]  { --sky: linear-gradient(180deg, #34427a, #b9665a); }
+  html[data-period="dia"]        { --sky: linear-gradient(180deg, #1a5fb8, #3b8fdc); }
+  html[data-period="entardecer"] { --sky: linear-gradient(180deg, #3b2a73, #d2583a); }
+  html[data-period="noite"]      { --sky: linear-gradient(180deg, #0d1433, #2a2f6b); }
+
+  /* Cor do fundo por clima (dia e noite). Vence as cores da hora quando o tempo carrega */
+  html[data-weather="clear"][data-light="day"]    { --sky: linear-gradient(180deg, #1a5fb8, #2f86d6); }
+  html[data-weather="clear"][data-light="night"]  { --sky: linear-gradient(180deg, #0b1030, #26326e); }
+  html[data-weather="partly"][data-light="day"]   { --sky: linear-gradient(180deg, #3a5f8a, #7088a0); }
+  html[data-weather="partly"][data-light="night"] { --sky: linear-gradient(180deg, #1a2440, #3a4560); }
+  html[data-weather="cloudy"][data-light="day"]   { --sky: linear-gradient(180deg, #55606e, #7b8794); }
+  html[data-weather="cloudy"][data-light="night"] { --sky: linear-gradient(180deg, #2a303a, #444c58); }
+  html[data-weather="fog"][data-light="day"]      { --sky: linear-gradient(180deg, #66707b, #8a939c); }
+  html[data-weather="fog"][data-light="night"]    { --sky: linear-gradient(180deg, #383f48, #59626c); }
+  html[data-weather="rain"][data-light="day"]     { --sky: linear-gradient(180deg, #2b3f5c, #4a6483); }
+  html[data-weather="rain"][data-light="night"]   { --sky: linear-gradient(180deg, #121a2b, #27364d); }
+  html[data-weather="storm"][data-light="day"]    { --sky: linear-gradient(180deg, #2a2540, #4a3f63); }
+  html[data-weather="storm"][data-light="night"]  { --sky: linear-gradient(180deg, #0e0c1c, #2a2346); }
+  html[data-weather="snow"][data-light="day"]     { --sky: linear-gradient(180deg, #4e6985, #7f98b0); }
+  html[data-weather="snow"][data-light="night"]   { --sky: linear-gradient(180deg, #202c3e, #46586e); }
+
+  * { box-sizing: border-box; margin: 0; }
+  html { min-height: 100%; background: var(--sky, #1a5fb8) fixed; }
+  body {
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; align-items: center;
+    padding: clamp(1.5rem, 6vw, 5rem);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    color: #fff;
+    text-shadow: 0 1px 14px rgba(0, 0, 0, .25);
+  }
+  main { width: 100%; max-width: 44rem; }
+  .sr { position: absolute; left: -9999px; }
+
+  .time {
+    font-size: clamp(3.75rem, 19vw, 9rem);
+    font-weight: 300; line-height: 1; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .time .sec { font-size: .32em; letter-spacing: 0; opacity: .75; margin-left: .15em; }
+  .date { margin-top: .75rem; font-size: clamp(1.05rem, 3.5vw, 1.35rem); }
+
+  .weather { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, .4); }
+  .place { font-weight: 500; font-size: 1.1rem; }
+  .now { display: flex; align-items: center; gap: .75rem; margin-top: .5rem; }
+  .now .icon { font-size: clamp(2.5rem, 9vw, 4rem); line-height: 1; }
+  .now .temp { font-size: clamp(3rem, 12vw, 5rem); font-weight: 300; line-height: 1; }
+  .desc { margin-top: .25rem; font-size: 1.15rem; }
+  .details { display: flex; flex-wrap: wrap; gap: .5rem 2rem; margin-top: 1.25rem; }
+  .details dt { font-size: .9rem; opacity: .85; }
+  .details dd { font-weight: 500; font-size: 1.15rem; }
+  .note { margin-top: 1.25rem; font-size: .95rem; opacity: .9; }
+
+  .forecast {
+    list-style: none; padding: 1.25rem 0 0; margin-top: 1.5rem;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(5.25rem, 1fr)); gap: 1rem .5rem;
+    border-top: 1px solid rgba(255, 255, 255, .4);
+  }
+  .forecast li { display: flex; flex-direction: column; align-items: center; gap: .25rem; text-align: center; }
+  .forecast .d, .forecast .t { font-weight: 500; }
+  .forecast .i { font-size: 1.75rem; line-height: 1.2; }
+  .forecast small { font-size: .9rem; font-weight: 400; opacity: .8; }
+  .forecast .r { font-size: .85rem; opacity: .9; }
+
+  .calendar { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, .4); }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+  .cal-head h2 { font-size: 1.2rem; font-weight: 500; }
+  .cal-nav { display: flex; gap: .5rem; }
+  .cal-nav button { margin: 0; padding: .3rem .8rem; }
+  .cal-table { width: 100%; margin-top: .75rem; border-collapse: collapse; table-layout: fixed; }
+  .cal-table th { padding: .25rem 0; font-size: .85rem; font-weight: 500; opacity: .85; }
+  .cal-table td { padding: .12rem 0; text-align: center; }
+  .cal-day { display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; font-variant-numeric: tabular-nums; }
+  .cal-day.h-nac { background: #fff; color: #1c2a40; font-weight: 500; text-shadow: none; }
+  .cal-day.h-loc { background: #ffd166; color: #2a1f00; font-weight: 500; text-shadow: none; }
+  .cal-day.today { font-weight: 500; box-shadow: inset 0 0 0 2px #fff; }
+  .cal-day.h-nac.today, .cal-day.h-loc.today { box-shadow: inset 0 0 0 2px #1c2a40; }
+  .cal-list { list-style: none; padding: 0; margin-top: 1rem; display: grid; gap: .45rem; }
+  .cal-list li { display: flex; align-items: baseline; gap: .6rem; }
+  .sw { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; flex: none; align-self: center; }
+  .sw.nac { background: #fff; }
+  .sw.loc { background: #ffd166; }
+  .sw.opt { border: 2px dashed #ffd166; }
+  .cal-day.h-opt { border: 2px dashed #ffd166; font-weight: 500; }
+  .cal-legend { display: flex; flex-wrap: wrap; gap: .4rem 1.25rem; margin-top: .9rem; font-size: .85rem; }
+  .cal-legend span { display: inline-flex; align-items: center; gap: .4rem; }
+  .place-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+  .unit { display: flex; gap: .4rem; }
+  .unit button { margin: 0; padding: .2rem .65rem; }
+  button[aria-pressed="true"] { background: #fff; color: #1c2a40; text-shadow: none; }
+  .cal-list .dt { min-width: 4.75rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .cal-list .tp { font-size: .85rem; opacity: .85; }
+
+  button {
+    margin-top: .5rem; padding: .5rem .9rem;
+    font: inherit; font-weight: 500; color: inherit; text-shadow: none;
+    background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .6); border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover { background: rgba(0, 0, 0, .45); }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1 class="sr">Hora e tempo local</h1>
+
+  <p class="time" id="time"></p>
+  <p class="date" id="date"></p>
+
+  <section class="weather" aria-live="polite">
+    <div class="place-row">
+      <p class="place" id="place">Buscando sua localização…</p>
+      <div class="unit" role="group" aria-label="Unidade de temperatura">
+        <button id="u-c" aria-pressed="true">°C</button>
+        <button id="u-f" aria-pressed="false">°F</button>
+      </div>
+    </div>
+    <div class="now">
+      <span class="icon" id="icon" aria-hidden="true"></span>
+      <span class="temp" id="temp"></span>
+    </div>
+    <p class="desc" id="desc"></p>
+    <dl class="details" id="details" hidden>
+      <div><dt>Sensação térmica</dt><dd id="feels"></dd></div>
+      <div><dt>Umidade</dt><dd id="humidity"></dd></div>
+      <div><dt>Vento</dt><dd id="wind"></dd></div>
+      <div><dt>Nascer do sol</dt><dd id="sunrise"></dd></div>
+      <div><dt>Pôr do sol</dt><dd id="sunset"></dd></div>
+    </dl>
+    <ul class="forecast" id="forecast" aria-label="Previsão dos próximos dias" hidden></ul>
+    <p class="note" id="note" hidden></p>
+    <button id="action" hidden></button>
+  </section>
+
+  <section class="calendar" aria-labelledby="cal-title">
+    <div class="cal-head">
+      <h2 id="cal-title"></h2>
+      <div class="cal-nav">
+        <button id="cal-prev" aria-label="Mês anterior">‹</button>
+        <button id="cal-today">Hoje</button>
+        <button id="cal-next" aria-label="Próximo mês">›</button>
+      </div>
+    </div>
+    <table class="cal-table">
+      <thead><tr id="cal-weekdays"></tr></thead>
+      <tbody id="cal-body"></tbody>
+    </table>
+    <p class="cal-legend" aria-hidden="true">
+      <span><i class="sw nac"></i> Nacional</span>
+      <span><i class="sw loc"></i> Estadual ou municipal</span>
+      <span><i class="sw opt"></i> Ponto facultativo</span>
+    </p>
+    <ul class="cal-list" id="cal-list"></ul>
+    <p class="note" id="cal-note" hidden></p>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const locale = navigator.language || 'pt-BR';
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone; // fuso do dispositivo
+  const hmFormat = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' });
+  const dateFormat = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  /* ---------- Hora ---------- */
+  function periodOf(hour) {
+    if (hour < 5) return 'madrugada';
+    if (hour < 8) return 'amanhecer';
+    if (hour < 17) return 'dia';
+    if (hour < 19) return 'entardecer';
+    return 'noite';
+  }
+
+  function tick() {
+    const now = new Date();
+    const sec = String(now.getSeconds()).padStart(2, '0');
+    $('time').innerHTML = `${hmFormat.format(now)}<span class="sec">${sec}</span>`;
+    const date = dateFormat.format(now);
+    $('date').textContent = date.charAt(0).toUpperCase() + date.slice(1);
+    document.documentElement.dataset.period = periodOf(now.getHours());
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  /* ---------- Tempo (Open-Meteo, sem chave de API) ---------- */
+  // Código WMO → [descrição, ícone de dia, ícone de noite]
+  const WEATHER = {
+    0: ['Céu limpo', '☀️', '🌙'], 1: ['Quase limpo', '🌤️', '🌙'], 2: ['Parcialmente nublado', '⛅', '☁️'],
+    3: ['Nublado', '☁️'], 45: ['Neblina', '🌫️'], 48: ['Neblina com geada', '🌫️'],
+    51: ['Garoa fraca', '🌦️'], 53: ['Garoa', '🌦️'], 55: ['Garoa forte', '🌧️'],
+    56: ['Garoa congelante', '🌧️'], 57: ['Garoa congelante forte', '🌧️'],
+    61: ['Chuva fraca', '🌦️'], 63: ['Chuva', '🌧️'], 65: ['Chuva forte', '🌧️'],
+    66: ['Chuva congelante', '🌧️'], 67: ['Chuva congelante forte', '🌧️'],
+    71: ['Neve fraca', '🌨️'], 73: ['Neve', '🌨️'], 75: ['Neve forte', '❄️'], 77: ['Grãos de neve', '🌨️'],
+    80: ['Pancadas de chuva fracas', '🌦️'], 81: ['Pancadas de chuva', '🌧️'], 82: ['Pancadas de chuva fortes', '⛈️'],
+    85: ['Pancadas de neve', '🌨️'], 86: ['Pancadas de neve fortes', '❄️'],
+    95: ['Trovoada', '⛈️'], 96: ['Trovoada com granizo', '⛈️'], 99: ['Trovoada com granizo forte', '⛈️']
+  };
+
+  // Agrupa os códigos WMO em tipos de clima (usados no fundo)
+  function groupOf(code) {
+    if (code === 2) return 'partly';
+    if (code === 3) return 'cloudy';
+    if (code === 45 || code === 48) return 'fog';
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+    if (code >= 95) return 'storm';
+    return 'clear';
+  }
+
+  function renderForecast(d) {
+    const dayFmt = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+    $('forecast').innerHTML = d.time.map((day, i) => {
+      const label = i === 0 ? 'Hoje' : i === 1 ? 'Amanhã'
+        : dayFmt.format(new Date(day + 'T12:00:00')).replace('.', '').replace(/^./, (ch) => ch.toUpperCase());
+      const [desc, icon] = WEATHER[d.weather_code[i]] || ['', '🌡️'];
+      const rain = d.precipitation_probability_max[i] ?? 0;
+      return `<li><span class="d">${label}</span><span class="i" role="img" aria-label="${desc}" title="${desc}">${icon}</span>` +
+        `<span class="t">${temp(d.temperature_2m_max[i])}° <small>${temp(d.temperature_2m_min[i])}°</small></span>` +
+        `<span class="r">💧 ${rain}%</span></li>`;
+    }).join('');
+    $('forecast').hidden = false;
+  }
+
+  let refreshTimer = null;
+
+  function setAction(label, handler) {
+    const btn = $('action');
+    btn.hidden = !label;
+    btn.textContent = label || '';
+    btn.onclick = handler || null;
+  }
+
+  function setNote(text) {
+    $('note').hidden = !text;
+    $('note').textContent = text || '';
+  }
+
+  async function fetchJSON(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.status);
+    return res.json();
+  }
+
+  async function placeInfo(lat, lon) {
+    const fallback = { label: timeZone.replace(/_/g, ' ') };
+    try {
+      const g = await fetchJSON(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=pt`);
+      const city = g.city || g.locality;
+      const state = g.principalSubdivision;
+      return {
+        label: city ? (state && state !== city ? `${city}, ${state}` : city) : fallback.label,
+        city, state, stateCode: g.principalSubdivisionCode, country: g.countryCode
+      };
+    } catch (e) { return fallback; }
+  }
+
+  /* Unidade: °C ou °F (vem do navegador; lembra a escolha da pessoa) */
+  let unit = 'C';
+  try { unit = localStorage.getItem('unit') || (['US', 'LR', 'MM'].includes((locale.split('-')[1] || '').toUpperCase()) ? 'F' : 'C'); } catch (e) {}
+  let lastWeather = null;
+  const temp = (c) => Math.round(unit === 'F' ? c * 9 / 5 + 32 : c);
+  const wind = (kmh) => unit === 'F' ? `${Math.round(kmh * 0.621371)} mph` : `${Math.round(kmh)} km/h`;
+  const hhmm = (iso) => (iso ? iso.slice(11, 16) : '—'); // a API já devolve o horário local do lugar
+
+  function setUnit(u) {
+    unit = u;
+    try { localStorage.setItem('unit', u); } catch (e) {}
+    $('u-c').setAttribute('aria-pressed', u === 'C');
+    $('u-f').setAttribute('aria-pressed', u === 'F');
+    if (lastWeather) renderWeather();
+  }
+  $('u-c').onclick = () => setUnit('C');
+  $('u-f').onclick = () => setUnit('F');
+
+  function renderWeather() {
+    const { current: c, daily } = lastWeather;
+    const [desc, dayIcon, nightIcon] = WEATHER[c.weather_code] || ['Condição indisponível', '🌡️'];
+    $('icon').textContent = c.is_day ? dayIcon : (nightIcon || dayIcon);
+    $('temp').textContent = `${temp(c.temperature_2m)}°${unit}`;
+    $('desc').textContent = `Agora: ${desc}`;
+    $('feels').textContent = `${temp(c.apparent_temperature)}°${unit}`;
+    $('humidity').textContent = `${Math.round(c.relative_humidity_2m)}%`;
+    $('wind').textContent = wind(c.wind_speed_10m);
+    $('sunrise').textContent = hhmm(daily.sunrise[0]);
+    $('sunset').textContent = hhmm(daily.sunset[0]);
+    $('details').hidden = false;
+    document.documentElement.dataset.weather = groupOf(c.weather_code);
+    document.documentElement.dataset.light = c.is_day ? 'day' : 'night';
+    renderForecast(daily);
+  }
+
+  async function showWeather(lat, lon) {
+    lastWeather = await fetchJSON(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day` +
+      `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset&forecast_days=6&timezone=auto`
+    );
+    renderWeather();
+  }
+
+  async function run(lat, lon, given, approximate) {
+    clearInterval(refreshTimer);
+    try {
+      const [info] = await Promise.all([given || placeInfo(lat, lon), showWeather(lat, lon)]);
+      $('place').textContent = info.label;
+      place = info;
+      renderCalendar();
+      if (approximate) {
+        setNote('Localização aproximada pelo fuso horário do seu dispositivo.');
+        setAction('Usar minha localização exata', start);
+      } else {
+        setNote('');
+        setAction('');
+      }
+      refreshTimer = setInterval(() => showWeather(lat, lon).catch(() => {}), 10 * 60 * 1000); // atualiza a cada 10 min
+    } catch (e) {
+      renderCalendar();
+      showError('Não foi possível carregar o tempo. Verifique sua conexão e tente de novo.', () => run(lat, lon, given, approximate));
+    }
+  }
+
+  function showError(message, retry) {
+    $('details').hidden = true;
+    $('forecast').hidden = true;
+    $('icon').textContent = '';
+    $('temp').textContent = '';
+    $('desc').textContent = '';
+    setNote(message);
+    setAction('Tentar de novo', retry);
+  }
+
+  // Sem permissão de localização, usa a cidade do fuso horário como aproximação
+  async function approximateByTimeZone() {
+    const city = timeZone.split('/').pop().replace(/_/g, ' ');
+    try {
+      const data = await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=pt`);
+      const g = data.results && data.results[0];
+      if (!g) throw new Error('sem resultado');
+      run(g.latitude, g.longitude, { label: g.admin1 ? `${g.name}, ${g.admin1}` : g.name, city: g.name, state: g.admin1, country: g.country_code }, true);
+    } catch (e) {
+      $('place').textContent = 'Localização indisponível';
+      renderCalendar();
+      showError('Permita o acesso à localização no navegador para ver o tempo da sua região.', start);
+    }
+  }
+
+  function start() {
+    $('place').textContent = 'Buscando sua localização…';
+    setNote('');
+    setAction('');
+    if (!navigator.geolocation) return approximateByTimeZone();
+    navigator.geolocation.getCurrentPosition(
+      (pos) => run(pos.coords.latitude, pos.coords.longitude),
+      approximateByTimeZone,
+      { timeout: 10000, maximumAge: 10 * 60 * 1000 }
+    );
+  }
+
+  /* ---------- Calendário e feriados ---------- */
+  // Feriados nacionais e regionais vêm da API Nager.Date (BrasilAPI como reserva no Brasil).
+  // Feriados estaduais e municipais específicos ficam nesta lista: adicione a sua cidade aqui.
+  // date: 'MM-DD' repete todo ano; 'AAAA-MM-DD' vale só naquele ano (pontos facultativos mudam a cada decreto).
+  const LOCAL_HOLIDAYS = [
+    { country: 'BR', state: 'Pernambuco', date: '03-06', name: 'Data Magna de Pernambuco', type: 'Estadual' },
+    { country: 'BR', state: 'Pernambuco', date: '06-24', name: 'São João', type: 'Estadual' },
+    { country: 'BR', state: 'Pernambuco', city: 'Petrolina', date: '08-15', name: 'Nossa Senhora Rainha dos Anjos', type: 'Municipal' },
+    { country: 'BR', state: 'Pernambuco', city: 'Petrolina', date: '09-21', name: 'Emancipação Política de Petrolina', type: 'Municipal' },
+    { country: 'BR', state: 'Pernambuco', city: 'Petrolina', date: '10-28', name: 'Dia do Servidor Público (só servidores municipais)', type: 'Municipal' },
+    { country: 'BR', state: 'Pernambuco', city: 'Petrolina', date: '2026-04-02', name: 'Quinta-feira Santa', type: 'Ponto facultativo' },
+    { country: 'BR', state: 'Pernambuco', city: 'Petrolina', date: '2026-04-20', name: 'Ponto facultativo', type: 'Ponto facultativo' },
+    { country: 'BR', state: 'Pernambuco', city: 'Petrolina', date: '2026-06-05', name: 'Ponto facultativo', type: 'Ponto facultativo' }
+  ];
+
+  let place = {};
+  let calToken = 0;
+  const holidayCache = {};
+  const today0 = new Date();
+  let viewYear = today0.getFullYear();
+  let viewMonth = today0.getMonth();
+
+  const norm = (t) => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const esc = (t) => String(t).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  function easter(y) { // Páscoa (algoritmo de Meeus/Jones/Butcher); os pontos facultativos móveis partem dela
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+    const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(y, month - 1, day);
+  }
+  const kindOf = (type) => (type === 'Nacional' ? 'nac' : type === 'Ponto facultativo' ? 'opt' : 'loc');
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
+  async function loadHolidays(year) {
+    const country = place.country || (locale.split('-')[1] || '').toUpperCase();
+    const key = [country, place.stateCode, place.city, year].join('|');
+    if (holidayCache[key]) return holidayCache[key];
+
+    const map = {};
+    let failed = false;
+    const add = (date, name, type) => {
+      const list = (map[date] = map[date] || []);
+      if (!list.some((h) => h.type === type || norm(h.name) === norm(name))) list.push({ name, type });
+    };
+
+    try {
+      const list = await fetchJSON(`https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`);
+      list.forEach((h) => {
+        if (h.global) add(h.date, h.localName, 'Nacional');
+        else if (place.stateCode && (h.counties || []).includes(place.stateCode)) add(h.date, h.localName, 'Regional');
+      });
+    } catch (e) {
+      if (country === 'BR') {
+        try {
+          (await fetchJSON(`https://brasilapi.com.br/api/feriados/v1/${year}`)).forEach((h) => add(h.date, h.name, 'Nacional'));
+        } catch (e2) { failed = true; }
+      } else { failed = true; }
+    }
+
+    if (country === 'BR') { // pontos facultativos nacionais (Carnaval, Cinzas, Corpus Christi)
+      const pascoa = easter(year);
+      [[-48, 'Carnaval'], [-47, 'Carnaval'], [-46, 'Quarta-feira de Cinzas'], [60, 'Corpus Christi']]
+        .forEach(([n, name]) => add(isoOf(addDays(pascoa, n)), name, 'Ponto facultativo'));
+    }
+
+    LOCAL_HOLIDAYS.forEach((h) => {
+      if (h.country !== country || norm(h.state) !== norm(place.state)) return;
+      if (h.city && norm(h.city) !== norm(place.city)) return;
+      const date = h.date.length > 5 ? h.date : `${year}-${h.date}`;
+      if (date.slice(0, 4) === String(year)) add(date, h.name, h.type);
+    });
+
+    const result = { map, failed };
+    if (!failed) holidayCache[key] = result;
+    return result;
+  }
+
+  async function renderCalendar() {
+    const token = ++calToken;
+    const first = new Date(viewYear, viewMonth, 1);
+    $('cal-title').textContent = cap(new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(first));
+
+    const { map, failed } = await loadHolidays(viewYear);
+    if (token !== calToken) return; // o usuário já mudou de mês
+
+    const now = new Date();
+    const isThisMonth = now.getFullYear() === viewYear && now.getMonth() === viewMonth;
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const cells = Array(first.getDay()).fill('<td></td>');
+    const listItems = [];
+    const weekdayFmt = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const hs = map[iso] || [];
+      const cls = ['cal-day'];
+      if (isThisMonth && d === now.getDate()) cls.push('today');
+      if (hs.length) {
+        const kinds = hs.map((h) => kindOf(h.type));
+        cls.push('h-' + (kinds.includes('loc') ? 'loc' : kinds.includes('nac') ? 'nac' : 'opt'));
+        const wd = weekdayFmt.format(new Date(viewYear, viewMonth, d)).replace('.', '');
+        hs.forEach((h) => listItems.push(
+          `<li><span class="sw ${kindOf(h.type)}"></span><span class="dt">${d} ${esc(wd)}</span>` +
+          `<span>${esc(h.name)}${norm(h.name) === norm(h.type) ? '' : ` <span class="tp">· ${esc(h.type)}</span>`}</span></li>`
+        ));
+      }
+      const label = hs.length ? ` aria-label="${d}: ${esc(hs.map((h) => h.name).join(', '))}"` : '';
+      cells.push(`<td><span class="${cls.join(' ')}"${label}>${d}</span></td>`);
+    }
+    while (cells.length % 7) cells.push('<td></td>');
+
+    let rows = '';
+    for (let i = 0; i < cells.length; i += 7) rows += `<tr>${cells.slice(i, i + 7).join('')}</tr>`;
+    $('cal-body').innerHTML = rows;
+    $('cal-list').innerHTML = listItems.length ? listItems.join('') : '<li>Nenhum feriado neste mês.</li>';
+    $('cal-note').hidden = !failed;
+    $('cal-note').textContent = failed ? 'Não foi possível carregar os feriados nacionais. Verifique sua conexão.' : '';
+  }
+
+  // Cabeçalho dos dias da semana (domingo primeiro) e botões de navegação
+  $('cal-weekdays').innerHTML = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(2023, 0, 1 + i); // 1/1/2023 foi domingo
+    return `<th scope="col" abbr="${esc(new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(day))}">` +
+           `${esc(new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(day))}</th>`;
+  }).join('');
+
+  function moveMonth(delta) {
+    const d = new Date(viewYear, viewMonth + delta, 1);
+    viewYear = d.getFullYear();
+    viewMonth = d.getMonth();
+    renderCalendar();
+  }
+  $('cal-prev').onclick = () => moveMonth(-1);
+  $('cal-next').onclick = () => moveMonth(1);
+  $('cal-today').onclick = () => { viewYear = new Date().getFullYear(); viewMonth = new Date().getMonth(); renderCalendar(); };
+
+  setUnit(unit);
+  renderCalendar();
+  start();
+</script>
+</body>
+</html>
